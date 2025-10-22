@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TERMINAL</title>
+<style>
+  :root {
+    --bg: #000000;
+    --fg: #3FD41B;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 "Leto Sans Condensed", "Roboto Mono", monospace;
+    padding: 40px 20px;
+    white-space: pre-line;
+    text-transform: uppercase;
+  }
+
+  #screen { margin-bottom: 14px; }
+  .line  { margin: 0 0 14px; }
+
+  .row {
+    display: none;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .row.active { display: flex; }
+
+  #cmd {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg);
+    font: inherit;
+    caret-color: var(--fg);
+    text-transform: uppercase;
+  }
+  #cmd::placeholder {
+    color: color-mix(in srgb, var(--fg) 45%, transparent);
+  }
+
+  .blink { animation: blink 1s steps(1,end) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+  <div id="screen"></div>
+
+  <div class="row" id="inputRow">
+    <span>&gt;</span>
+    <input id="cmd" type="text" autocomplete="off" spellcheck="false" placeholder="escribe aquí y presiona enter" />
+  </div>
+
+<script>
+  const screen   = document.getElementById('screen');
+  const inputRow = document.getElementById('inputRow');
+  const input    = document.getElementById('cmd');
+
+  // ========= AUDIO =========
+  let audioCtx, audioUnlocked = false;
+  function unlockAudio() {
+    if (!audioUnlocked) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioUnlocked = true;
+      } catch (_) {}
+    }
+  }
+  document.addEventListener('click', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
+
+  function beep(freq=443, dur=0.3, type='square', vol=0.02) {
+    try {
+      if (!audioCtx) return;
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.value = vol;
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      const t = audioCtx.currentTime;
+      osc.start(t);
+      osc.stop(t + dur);
+    } catch (_) {}
+  }
+  const beepEnter    = () => beep(643, 0.3, 'triangle', 0.02);
+  const beepResponse = () => beep(443, 0.3, 'square', 0.01);
+
+  // ========= HELPERS =========
+  function appendLine(content) {
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.textContent = content;
+    screen.appendChild(div);
+    screen.scrollTop = screen.scrollHeight;
+    return div;
+  }
+
+  function createPendingLine() {
+    const span = document.createElement('span');
+    span.className = 'blink';
+    span.textContent = '<?>';
+    return appendLine(span.outerHTML);
+  }
+
+  function fulfillPendingLine(lineDiv, message, { playBeep = true } = {}) {
+    lineDiv.textContent = '> ' + message;
+    if (playBeep) beepResponse();
+  }
+
+  function respond(message, delayMs = 2000, { playBeep = true } = {}) {
+    const span = document.createElement('span');
+    span.className = 'blink';
+    span.textContent = '<?>';
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'line';
+    lineDiv.appendChild(span);
+    screen.appendChild(lineDiv);
+    screen.scrollTop = screen.scrollHeight;
+    setTimeout(() => fulfillPendingLine(lineDiv, message, { playBeep }), delayMs);
+  }
+
+  // ========= CONVERSACIÓN =========
+  let state = 0;
+
+  const initialSpan = document.createElement('span');
+  initialSpan.className = 'blink';
+  initialSpan.textContent = '<?>';
+  const initialLine = document.createElement('div');
+  initialLine.className = 'line';
+  initialLine.appendChild(initialSpan);
+  screen.appendChild(initialLine);
+
+  setTimeout(() => {
+    fulfillPendingLine(initialLine, 'HOLA', { playBeep: false }); // SIN beep
+    setTimeout(() => {
+      inputRow.classList.add('active');
+      input.focus();
+    }, 1000);
+  }, 2000);
+
+  document.addEventListener('click', () => input.focus());
+
+  function normalize(str) {
+    return str.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const raw = input.value.trim();
+      if (!raw) return;
+      beepEnter();
+      appendLine('> ' + raw);
+      input.value = '';
+      handle(raw);
+    }
+  });
+
+  function handle(userMsg){
+    const m = normalize(userMsg);
+    if (state === 0) {
+      if (m === 'hola') {
+        respond('LO ENCONTRASTE?');
+        state = 1;
+      } else {
+        respond('ESCRIBE "HOLA"');
+      }
+    } else if (state === 1) {
+      if (m === 'si' || m === 's' || m === 'yes') {
+        respond('EXCELENTE');
+        setTimeout(() => respond('FIN'), 2300);
+      } else if (m === 'no' || m === 'n') {
+        respond('SIGUE BUSCANDO...');
+      } else {
+        respond('RESPONDE "SI" O "NO"');
+      }
+    }
+  }
+</script>
+</body>
+</html>
